@@ -74,7 +74,7 @@ All boards listed below offer the exact same Bit Pirate features, with no differ
 | **Seeed Studio Xiao S3** | ![Photo of the Seeed Studio Xiao ESP32-S3](/images/xiaos3_s.jpg)        | 9 GPIO (exposed pins), 1 button |
 | **Waveshare ESP32-S3-GEEK** | ![Photo of the Waveshare ESP32-S3-GEEK](/images/waveshare-s3-geek_s.jpg) | 7 GPIO (Dupont header), screen, 1 button, SD card |
 | **Unexpected Maker ProS3**| [![Photo of the Unexpected Maker ProS3](/images/pros3_s.jpg)](https://www.adafruit.com/product/5401) | More than 20 available GPIO (Header, STEMMA QT), 1 button|
-| [**M5Stack Tab5**](https://shop.m5stack.com/products/m5stack-tab5) |  | 5" touchscreen, native USB, IMU, battery, SD card, camera — **separate ESP-IDF build** (see [`tab5-espidf/`](tab5-espidf/)), **no native Wi-Fi monitor/BLE sniffing**, **no USB-A Expander workaround yet** (hangs the board, disabled) |
+| [**M5Stack Tab5**](https://shop.m5stack.com/products/m5stack-tab5) |  | 5" touchscreen, native USB, IMU, battery, SD card, camera. **Unofficial port**, separate ESP-IDF build (see [`tab5-espidf/`](tab5-espidf/)). No native Wi-Fi monitor/BLE sniffing. No USB-A Expander yet (disabled, hangs the board) |
 
 - **Other ESP32-S3-based Boards**
 
@@ -86,17 +86,15 @@ All boards listed below offer the exact same Bit Pirate features, with no differ
 
 ## M5Stack Tab5
 
-The Tab5 (ESP32-P4 + ESP32-C6) isn't built from this PlatformIO tree — its
-display, native USB and ESP32-P4 architecture don't fit the shared
-Arduino/PlatformIO boards above. A standalone ESP-IDF port lives in
-[`tab5-espidf/`](tab5-espidf/), with its own build, CI and README.
+An official Tab5 port exists at [geo-tp/ESP32-Bit-Pirate, branch `p4-tab5`](https://github.com/geo-tp/ESP32-Bit-Pirate/tree/p4-tab5).
 
-The C6 co-processor handles Wi-Fi/BT networking but not monitor-mode/sniffing.
-The USB-A port was meant to host a [C5 Expander](#expander) for that, but
-real hardware testing found the USB-A host code hangs the board (a
-USB-OTG/PHY conflict with the native device-mode port) — disabled pending a
-fix. The Expander command falls back to the generic wired-UART transport
-every other board uses, same as before.
+This fork's Tab5 support is a separate, unofficial port. It does not reuse the official branch's code. It is not built from this PlatformIO tree.
+
+A standalone ESP-IDF port lives in [`tab5-espidf/`](tab5-espidf/), with its own build, CI and README.
+
+It runs a touchscreen GUI on the Tab5 itself, with an on-screen virtual keyboard. This is closer to the web UI's layout than the serial terminal the other boards use.
+
+The C6 co-processor handles Wi-Fi/BT networking, not monitor-mode or sniffing. The USB-A Expander path exists but is disabled, see [`tab5-espidf/README.md`](tab5-espidf/README.md) for why.
 
 ## Getting Started
 
