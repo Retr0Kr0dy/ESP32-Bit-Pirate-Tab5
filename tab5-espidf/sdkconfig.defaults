@@ -1,0 +1,212 @@
+# sdkconfig defaults -- ESP32-Bit-Pirate-P4-Tab5 (M5Stack Tab5 / ESP32-P4).
+#
+# Forked from Tab5-Launchpad's sdkconfig.defaults (itself forked from
+# Tab5-Orion, with the WiFi/BT/dynamic-ELF-app/video-player blocks already
+# dropped there). This Phase-1 pass additionally drops Launchpad's
+# USB-MIDI-device config -- this project has no USB personality yet
+# (Phase 6 of the port plan adds USB host for HID/flashrom/storage modes).
+#
+# The camera block is kept even though this firmware never uses the
+# camera -- SIC's Tab5 camera driver auto-registers whenever
+# SIC_TARGET_TAB5 + SIC_BACKEND_ESPIDF are both defined (see
+# lib/SIC/src/core/autoreg.c), and esp_video_init() hard-fails at runtime
+# if no sensor is configured. Carried over verbatim from Launchpad/Orion.
+
+CONFIG_IDF_TARGET="esp32p4"
+
+# ---- ESP32-P4 silicon revision ------------------------------------------
+# Tab5 ships the ES (pre rev 3.00) P4 die. Building rev-3+ code for an ES
+# part is a quiet way to get a board that does not boot.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_1=y
+CONFIG_ESP32P4_REV_MIN_FULL=1
+CONFIG_ESP_REV_MIN_FULL=1
+
+# ---- Flash ---------------------------------------------------------------
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/partitions.csv"
+
+# ---- PSRAM ---------------------------------------------------------------
+# 32 MB hex-mode PSRAM. The DSI scanout framebuffers (720*1280*2 bytes each,
+# x2 for double-buffering = ~3.7 MB) are allocated out of it, so this is not
+# optional. Do NOT set CONFIG_SPIRAM_PRE_CONFIGURE_MEMORY_PROTECTION once
+# Arduino-as-component (and any PSRAM-executed code) lands -- see Tab5-Orion's
+# docs/vendored-patches.md for the PMP-vs-elf_loader conflict this caused
+# there; the same caution applies to anything that executes relocated code
+# from PSRAM in this project.
+#
+# This was only ever a comment, not an enforced setting -- the generated
+# sdkconfig silently drifted to =y at some point (almost certainly a
+# `default y if ...` pulled in by arduino-esp32's own Kconfig once it was
+# integrated), directly contradicting both this comment and Orion's own
+# proven-safe value. Suspected root cause of an intermittent USB-Serial-JTAG
+# disconnect occurring during early PSRAM calibration (before app_main runs),
+# found while investigating that bug. Pinning it explicitly here so it can't
+# silently re-drift on a future `idf.py reconfigure`.
+CONFIG_SPIRAM_PRE_CONFIGURE_MEMORY_PROTECTION=n
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+# 256KB L2, not 128KB: Tab5-Orion measured a 128KB L2 cache collapsing a
+# plain internal-SRAM sequential-read benchmark from ~210MB/s to ~3.5MB/s on
+# this chip (instruction-fetch stalls from an L2 too small to hold the
+# firmware's code footprint). Carried over as the safe default.
+CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_128B=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+
+# ---- Console -------------------------------------------------------------
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# ---- FreeRTOS ------------------------------------------------------------
+CONFIG_FREERTOS_HZ=1000
+
+# ---- Main task stack -------------------------------------------------------
+# Modest headroom above the IDF default for SGFX/UI draw call chains, same
+# as Launchpad.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# ---- Camera (esp_video) -- kept only because SIC's autoreg couples it to
+# SIC_TARGET_TAB5+SIC_BACKEND_ESPIDF; not used by this firmware's features.
+CONFIG_CAMERA_SC202CS=y
+CONFIG_CAMERA_SC202CS_AUTO_DETECT=y
+CONFIG_CAMERA_SC202CS_AUTO_DETECT_MIPI_INTERFACE_SENSOR=y
+CONFIG_CAMERA_SC202CS_MIPI_RAW8_1280x720_30FPS=y
+CONFIG_ESP_VIDEO_ENABLE_MIPI_CSI_VIDEO_DEVICE=y
+CONFIG_ESP_VIDEO_ENABLE_ISP=y
+CONFIG_ESP_VIDEO_ENABLE_ISP_VIDEO_DEVICE=y
+CONFIG_ESP_VIDEO_ENABLE_ISP_PIPELINE_CONTROLLER=y
+
+# ---- C++ exceptions --------------------------------------------------------
+# lib/BitPirateCore is unmodified Arduino/PlatformIO source (ArgTransformer.cpp
+# uses try/catch around std::stoul for number parsing), and Arduino/PlatformIO
+# enables C++ exceptions by default -- bare ESP-IDF does not
+# (CONFIG_COMPILER_CXX_EXCEPTIONS defaults off). Needed project-wide, not a
+# one-file workaround: without it, any vendored BitPirateCore file using
+# try/catch or throw fails to build with "exception handling disabled".
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+
+# ---- esp_hosted (Wi-Fi/BLE co-processor transport) ------------------------
+# arduino-esp32 defaults CONFIG_ESP_HOSTED_ENABLED=y on P4 (it's the only way
+# Arduino's WiFi.h works on a chip with no native radio: "default y if
+# ESP_WIFI_REMOTE_ENABLED && ESP_WIFI_REMOTE_LIBRARY_HOSTED", both true by
+# default for this target -- see managed_components/espressif__esp_hosted/Kconfig).
+# That pulls in host/port/esp/freertos/src/port_esp_hosted_host_init.c, which
+# runs esp_hosted_init() from a plain __attribute__((constructor)) -- NOT the
+# more controlled ESP_SYSTEM_INIT_FN -- meaning it executes before FreeRTOS's
+# own "main" task is created in esp_startup_start_app(). On this board that
+# starves/corrupts internal heap badly enough that the main task's own
+# xTaskCreatePinnedToCore() then fails outright: "assert failed:
+# esp_startup_start_app app_startup.c:86 (res == pdTRUE)", a boot-crash-loop
+# confirmed on real hardware, with ZERO app code (not even app_main()) having
+# run yet. This is the same eager-init behavior Tab5-Orion's own
+# docs/vendored-patches.md describes having patched out for a performance
+# regression -- here it outright prevents booting.
+#
+# Phase-0 spike #3 (Wi-Fi AP + web UI), now attempted: re-enabled, but ONLY
+# safe because the managed_components/espressif__esp_hosted local patch
+# (host/port/esp/freertos/src/port_esp_hosted_host_init.c) disables the
+# auto-init constructor described above and replaces it with an explicit,
+# lazy esp_hosted_host_init_lazy() call -- see main/boards/tab5_bitpirate/
+# WebUi.cpp, called only the first time Wi-Fi AP mode is actually requested.
+# That managed_components patch is NOT upstream and WILL be silently lost on
+# a fresh `idf.py reconfigure`/component re-fetch -- if boot starts crashing
+# again with "assert failed: esp_startup_start_app", re-apply it first.
+CONFIG_ESP_HOSTED_ENABLED=y
+
+# esp_http_server's WebSocket support (main/boards/tab5_bitpirate/WebUi.cpp,
+# bridges the real web UI's own WebSocket into the Tab5 terminal) is off
+# by default.
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# esp_hosted's SDIO pin Kconfig defaults to "no development board selected",
+# which resolves to the ESP32-P4-Function-EV-Board's SDIO pins (CLK=18,
+# CMD=19, D0=14, D1=15, D2=16, D3=17, slave-reset=54) -- WRONG for Tab5, and
+# confirmed on real hardware: with this unset, `webui` fails with repeated
+# `sdmmc_init_ocr`/`sdmmc_card_init failed` (the SDIO link to the C6 never
+# comes up at the hardware level -- this is NOT the separate esp_hosted/
+# esp_wifi_remote version-mismatch question, it's upstream of that). esp_hosted
+# ships a correct, built-in Tab5 profile (CLK=12, CMD=13, D0=11, D1=10, D2=9,
+# D3=8, reset=15 -- exactly Tab5-Orion's own TAB5_SDIO_* constants in
+# tab5_ref/Tab5-Orion/main/wifi.c) -- just select it.
+CONFIG_ESP32P4_TAB5_C6_BOARD=y
+# This alone is NOT sufficient for arduino-esp32's WiFi.softAP()/WiFi.mode()
+# path specifically (confirmed on real hardware) -- esp32-hal-hosted.c reads
+# hardcoded BOARD_SDIO_ESP_HOSTED_* macros from the generic "esp32p4" Arduino
+# variant's pins_arduino.h (no Tab5-specific variant exists upstream), which
+# bypass this Kconfig option entirely. That file also needs the matching
+# local patch -- see managed_components/espressif__arduino-esp32/variants/
+# esp32p4/pins_arduino.h's own comment at BOARD_SDIO_ESP_HOSTED_CLK.
+
+# ---- Misc ----------------------------------------------------------------
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+CONFIG_FATFS_VFS_FSTAT_BLKSIZE=8192
+CONFIG_FATFS_LFN_HEAP=y
+# CONFIG_FATFS_LFN_NONE is not set
+CONFIG_FATFS_ALLOC_PREFER_EXTRAM=y
+
+# ---- LVGL (GUI migration spike, main/boards/tab5_bitpirate/lvgl_spike.c) --
+# Custom allocator so LVGL's object/style heap lives in PSRAM, not fighting
+# the ~274KB of internal RAM everything else here already budgets tightly.
+CONFIG_LV_MEM_CUSTOM=y
+CONFIG_LV_MEM_CUSTOM_INCLUDE="esp_heap_caps.h"
+# Montserrat 24px: matches the ~20-28px glyph-height readability target
+# from the earlier touch/typography research for this panel's 294 PPI.
+# Compiling the font in (MONTSERRAT_24=y) is not enough on its own -- LVGL
+# falls back to Montserrat 14 as LV_FONT_DEFAULT unless told otherwise, and
+# nothing in the GUI code sets a font explicitly (it all relies on the
+# default). This line was missing originally, which is exactly why the
+# running font silently stayed at 14px despite this file "enabling" 24.
+# Still compiled in (other LVGL widgets/styles may fall back to it), but
+# Tab5Gui.cpp's terminal renderer itself now uses its own custom font
+# (fonts/lv_font_pirate_mono_16.c) instead -- see Tab5Gui.cpp's termFont()
+# comment for why: Montserrat is proportional and garbles anything that
+# depends on fixed-width columns (the Bit Pirate ASCII banner, I2C scan
+# tables, hex dumps), confirmed on real hardware.
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_24=y
+
+# ---- BLE over the C6 co-processor (Services/BluetoothService.cpp) --------
+# Same esp_hosted transport WiFi already uses, but BT needs its own enable
+# chain: CONFIG_BT_ENABLED is unset by default, and arduino-esp32's BLE
+# library (BLEDevice.h et al) is gated on it plus NimBLE specifically.
+# Settings match esp_hosted's own reference example verbatim
+# (managed_components/espressif__esp_hosted/examples/
+# host_nimble_bleprph_host_only_vhci/sdkconfig.defaults) -- VHCI transport
+# (not UART) since there's no separate UART link to the C6 for BT, same
+# physical SDIO link WiFi already uses.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_CONTROLLER_DISABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=n
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_TRANSPORT_UART=n
+CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
+CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y
+
+# ---- Ethernet (Services/EthernetService.cpp) -----------------------------
+# arduino-esp32's ETH.h only declares ETH_PHY_W5500 in its eth_phy_type_t
+# enum when this is set (confirmed by reading the real header directly --
+# the enum value itself is behind #if CONFIG_ETH_SPI_ETHERNET_W5500, not
+# just a missing library).
+CONFIG_ETH_SPI_ETHERNET_W5500=y
+
+# ---- USB device mode (main/usb_device.c) ---------------------------------
+# Native esp_tinyusb HID+MSC device, NOT Arduino's USB.h/USBHIDKeyboard.h
+# (that wrapper never compiles its real bodies on this arduino-esp32/
+# esp_tinyusb version combo -- see usb_device.h's header comment). 4 HID
+# slots: keyboard, mouse, gamepad, system-control, each its own TinyUSB HID
+# instance (main/usb_device.c's ITF_* enum) -- no Report ID multiplexing.
+# MSC backs Tab5's SD card (see sic_sd_sdmmc_release_for_usb()'s comment in
+# lib/SIC/include/sic/storage/sd_sdmmc.h for the ownership handoff).
+CONFIG_TINYUSB_HID_COUNT=4
+CONFIG_TINYUSB_MSC_ENABLED=y
+# CDC-ACM: the plain USB-serial CLI (main/usb_device.c).
+CONFIG_TINYUSB_CDC_ENABLED=y
+CONFIG_TINYUSB_CDC_COUNT=1

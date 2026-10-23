@@ -1,0 +1,10 @@
+# Name,     Type, SubType,   Offset,    Size,
+# Adapted from ESP32-Bit-Pirate's own 16MB scheme (partitions/app4M_spiffs_12M_16MB.csv),
+# but with a larger factory app partition (8M, matching Tab5-Orion/Tab5-Launchpad) since
+# this firmware links SIC+SGFX+konsole+BitPirateCore+Arduino-ESP32-as-component, not just
+# a single Arduino sketch.
+nvs,        data, nvs,       0x9000,    0x6000,
+phy_init,   data, phy,       0xF000,    0x1000,
+factory,    app,  factory,   0x10000,   8M,
+spiffs,     data, spiffs,    0x810000,  0x7E0000,
+coredump,   data, coredump,  0xFF0000,  0x10000,

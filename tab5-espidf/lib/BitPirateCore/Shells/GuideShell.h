@@ -1,0 +1,48 @@
+#pragma once
+#include <vector>
+#include <string>
+
+#include "Interfaces/ITerminalView.h"
+#include "Interfaces/IInput.h"
+#include "Interfaces/IShell.h"
+#include "Managers/UserInputManager.h"
+
+class GuideShell : public IShell {
+public:
+    GuideShell(ITerminalView& tv,
+               IInput& in,
+               UserInputManager& uim);
+
+    void run() override;
+
+private:
+    ITerminalView& terminalView;
+    IInput& terminalInput;
+    UserInputManager& userInputManager;
+
+    inline static constexpr const char* actions[] = {
+        " 🚀 Quick start",
+        " 🧩 Command examples",
+        " 🌐 Web terminal",
+        " 🧰 Instruction syntax",
+        " 🐍 Python automation",
+        " 📒 File System",
+        " ☠️  Pirate Assistant",
+        " 🔌 USB Adapters",
+        " ⚠️  Safety (voltage)",
+        " 🚪 Exit"
+    };
+
+    inline static constexpr size_t actionsCount =
+        sizeof(actions) / sizeof(actions[0]);
+
+    void cmdQuickStart();
+    void cmdExamples();
+    void cmdWebTerminal();
+    void cmdInstructionSyntax();
+    void cmdPythonAutomation();
+    void cmdLittleFS();
+    void cmdPirateAssistant();
+    void cmdUsbAdapters();
+    void cmdSafety();
+};

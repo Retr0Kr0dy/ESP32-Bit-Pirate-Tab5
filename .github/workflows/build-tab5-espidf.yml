@@ -1,0 +1,58 @@
+name: Tab5 ESP-IDF firmware
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tab5-espidf-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tab5-espidf
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Source and packaging tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Verify required port source paths
+        run: python3 tools/check_source_tree.py
+
+  esp32p4:
+    needs: source-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: ESP-IDF 5.5.4 firmware build and full flash image
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.4
+          target: esp32p4
+          path: 'tab5-espidf'
+          command: 'idf.py build && idf.py merge-bin -o tab5-bitpirate-full.bin'
+      - name: Check managed esp_hosted early initialization
+        working-directory: tab5-espidf
+        run: python3 tools/check_hosted_init.py
+      - name: Package flash files and checksums
+        working-directory: tab5-espidf
+        run: python3 tools/package_firmware.py --build-dir build --out-dir dist
+      - name: Upload firmware for hardware qualification
+        uses: actions/upload-artifact@v4
+        with:
+          name: tab5-bitpirate-espidf-${{ github.sha }}
+          path: |
+            tab5-espidf/dist/
+          if-no-files-found: error
+          retention-days: 30

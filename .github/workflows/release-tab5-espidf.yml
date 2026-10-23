@@ -1,0 +1,51 @@
+name: Publish Tab5 ESP-IDF firmware (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to publish (for example v0.1.0-tab5)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check tag format
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-a-zA-Z0-9.]*)?$ ]]; then
+            echo 'Expected a version tag such as v0.1.0-tab5' >&2
+            exit 1
+          fi
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: ESP-IDF 5.5.4 firmware build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.4
+          target: esp32p4
+          path: 'tab5-espidf'
+          command: 'idf.py build && idf.py merge-bin -o tab5-bitpirate-full.bin'
+      - name: Check host initialization risk
+        working-directory: tab5-espidf
+        run: python3 tools/check_hosted_init.py --strict
+      - name: Package firmware
+        working-directory: tab5-espidf
+        run: python3 tools/package_firmware.py --build-dir build --out-dir dist
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          files: tab5-espidf/dist/*

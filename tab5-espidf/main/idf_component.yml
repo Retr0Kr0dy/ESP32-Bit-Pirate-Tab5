@@ -1,0 +1,45 @@
+## IDF Component Manager manifest — ESP32-Bit-Pirate-P4-Tab5 (M5Stack Tab5 / ESP32-P4).
+##
+## The camera-stack pins (esp_video/esp_ipa/esp_cam_sensor/esp_sccb_intf)
+## are kept for the same reason Tab5-Launchpad (where SIC/SGFX were
+## forked from) keeps them: SIC's Tab5 camera driver auto-registers
+## whenever SIC_TARGET_TAB5+SIC_BACKEND_ESPIDF are both defined, so
+## esp_video and its dependencies must resolve for the build to link,
+## even though nothing calls into the camera at runtime.
+##
+## Wi-Fi/BLE use the ESP32-C6 hosted link (enabled by sdkconfig.defaults).
+## WARNING: that configuration needs the project's lazy esp_hosted init
+## modification; managed_components is not included in this source archive.
+## See PORT_REVIEW.md before regenerating dependencies.
+dependencies:
+  idf: '>=5.3'
+  espressif/arduino-esp32: '3.3.12'
+  ## LVGL — the real GUI's widget tree (main/boards/tab5_bitpirate/
+  ## Tab5Gui.cpp), replacing the hand-rolled SGFX chrome this project
+  ## started with (SGFX has no rounded-rect/gradient/shadow/alpha-blend
+  ## primitives and its "nicer" font path was an empty stub — confirmed
+  ## directly before switching). Pinned to an 8.3.x release: LVGL 9's API
+  ## differs enough from 8.x that a feasibility spike's findings (and this
+  ## migration itself) wouldn't transfer without re-checking everything —
+  ## 8.3 is the long-stable line most ESP-IDF LVGL integration examples
+  ## still target.
+  lvgl/lvgl: '8.3.11'
+  espressif/esp_video: '0.7.0'
+  espressif/esp_ipa: '0.1.0'
+  espressif/esp_cam_sensor: '0.7.1'
+  espressif/esp_sccb_intf: '0.0.4'
+  ## USB host mode (Services/UsbS3Service.cpp) -- Arduino's USBHIDKeyboard/
+  ## USBHIDMouse/USBHIDGamepad/USBHIDSystemControl/USBMSC classes are thin
+  ## wrappers over TinyUSB and need CONFIG_TINYUSB_ENABLED. ^2.0.0 resolved
+  ## to 2.4.0, which restructured its Kconfig and no longer defines
+  ## TINYUSB_ENABLED at all (confirmed: grepping its Kconfig finds nothing,
+  ## while arduino-esp32 3.3.12's own CMakeLists.txt/USB.h still check that
+  ## exact symbol) -- a real arduino-esp32-vs-esp_tinyusb version mismatch,
+  ## not a config mistake on this project's part. Pinned to the 1.x line
+  ## instead, which still has the symbol.
+  espressif/esp_tinyusb: '^1.0.0'
+  ## NOTE: do NOT add espressif/led_strip here. FastLED's RMT5 backend
+  ## needs led_strip_refresh_async()/led_strip_refresh_wait_done(), which
+  ## only exist in FastLED's OWN bundled led_strip fork
+  ## (components/FastLED/src/third_party/espressif/led_strip) -- adding the
+  ## real upstream component too causes duplicate-symbol link errors.

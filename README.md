@@ -74,6 +74,7 @@ All boards listed below offer the exact same Bit Pirate features, with no differ
 | **Seeed Studio Xiao S3** | ![Photo of the Seeed Studio Xiao ESP32-S3](/images/xiaos3_s.jpg)        | 9 GPIO (exposed pins), 1 button |
 | **Waveshare ESP32-S3-GEEK** | ![Photo of the Waveshare ESP32-S3-GEEK](/images/waveshare-s3-geek_s.jpg) | 7 GPIO (Dupont header), screen, 1 button, SD card |
 | **Unexpected Maker ProS3**| [![Photo of the Unexpected Maker ProS3](/images/pros3_s.jpg)](https://www.adafruit.com/product/5401) | More than 20 available GPIO (Header, STEMMA QT), 1 button|
+| [**M5Stack Tab5**](https://shop.m5stack.com/products/m5stack-tab5) |  | 5" touchscreen, native USB, IMU, battery, SD card, camera — **separate ESP-IDF build** (see [`tab5-espidf/`](tab5-espidf/)), **no native Wi-Fi monitor/BLE sniffing**, **no USB-A Expander workaround yet** (hangs the board, disabled) |
 
 - **Other ESP32-S3-based Boards**
 
@@ -82,6 +83,20 @@ All boards listed below offer the exact same Bit Pirate features, with no differ
   - You can **flash the s3 dev-kit (8MB flash) or supermini (4MB flash) firmware onto any ESP32-S3 board.**
 
   - Keep in mind that the **default pin mapping in the firmware may not match** your specific board.
+
+## M5Stack Tab5
+
+The Tab5 (ESP32-P4 + ESP32-C6) isn't built from this PlatformIO tree — its
+display, native USB and ESP32-P4 architecture don't fit the shared
+Arduino/PlatformIO boards above. A standalone ESP-IDF port lives in
+[`tab5-espidf/`](tab5-espidf/), with its own build, CI and README.
+
+The C6 co-processor handles Wi-Fi/BT networking but not monitor-mode/sniffing.
+The USB-A port was meant to host a [C5 Expander](#expander) for that, but
+real hardware testing found the USB-A host code hangs the board (a
+USB-OTG/PHY conflict with the native device-mode port) — disabled pending a
+fix. The Expander command falls back to the generic wired-UART transport
+every other board uses, same as before.
 
 ## Getting Started
 

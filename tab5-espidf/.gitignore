@@ -1,0 +1,42 @@
+# ESP-IDF generated files (not firmware source)
+/build/
+/build_*/
+/managed_components/
+/dist/
+/sdkconfig.old
+/sdkconfig.*.old
+/compile_commands.json
+/sdkconfig.ci
+
+# IDE and host environment
+/.vscode/
+/.idea/
+/.pio/
+/.venv/
+/venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+*.swp
+*.swo
+.DS_Store
+
+# Logs, flashing outputs, caches; do not commit credentials or keys
+*.log
+*.elf
+*.map
+*.bin
+*.uf2
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Vendored library exports must not carry nested Git histories
+**/.git/
+**/.gitmodules.local
+
+# Other host-generated files
+*.bak
+*~
