@@ -1,26 +1,9 @@
-# ESP32-Bit-Pirate-P4-Tab5 — ESP-IDF project root (M5Stack Tab5 / ESP32-P4).
-#
-# A port of ESP32-Bit-Pirate (an Arduino/PlatformIO Bus Pirate clone for
-# ESP32-S3 boards) onto the Tab5's 720x1280 touchscreen, following the
-# implementation plan at ../.. /ESP32-Bit-Pirate-P4-Tab5 (see repo docs).
-#
-# Native board bring-up (display/touch) is forked from Tab5-Launchpad —
-# its lib/SIC (board HAL), lib/SGFX (graphics core) and lib/konsole
-# (terminal widget) are vendored verbatim under lib/, same as Launchpad
-# itself vendored them from Tab5-Orion. Bit Pirate's own business logic
-# (Controllers/Services/Analyzers/...) is vendored unmodified under
-# lib/BitPirateCore/ and will run as an Arduino-ESP32-as-component task
-# once that integration lands (see main/CMakeLists.txt's header comment
-# for the current phase's scope).
-#
-# Plain, stock ESP-IDF project layout: this file plus a single `main/`
-# component. Built with `idf.py build` against ESP-IDF 5.5.4 (pinned,
-# matching Tab5-Orion/Tab5-Launchpad's validated baseline).
-#
-# Deliberately NOT a PlatformIO project, even though the vendored
-# BitPirateCore source was originally written against the Arduino/
-# PlatformIO framework — see main/CMakeLists.txt for how that gap is
-# bridged.
+# ESP32 Bit Pirate — M5Stack Tab5 (ESP32-P4 + ESP32-C6)
+# Standalone ESP-IDF 5.5.4 firmware project. The Bit Pirate command/adapter
+# core is included under lib/BitPirateCore; P4 board support, LVGL and native
+# USB are implemented in main/ and the SIC/SGFX libraries.
+# Locked managed-component overrides are applied during project configure;
+# see tools/apply_vendor_overrides.py and docs/BUILD_AND_RELEASE.md.
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -31,7 +14,10 @@ project(esp32-bit-pirate-p4-tab5)
 # shipped on ESP32-P4/Tab5 (see tools/apply_vendor_overrides.py's own
 # header for the full list). Re-applied every configure, since the
 # component manager overwrites managed_components/ on each fetch.
-execute_process(COMMAND ${PYTHON} ${CMAKE_SOURCE_DIR}/tools/apply_vendor_overrides.py)
+execute_process(
+    COMMAND ${PYTHON} ${CMAKE_SOURCE_DIR}/tools/apply_vendor_overrides.py
+    COMMAND_ERROR_IS_FATAL ANY
+)
 
 # arduino-esp32 (main/idf_component.yml) pulls espressif__esp-modbus in as
 # one of its own transitive dependencies -- this firmware has no Modbus

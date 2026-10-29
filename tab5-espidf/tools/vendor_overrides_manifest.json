@@ -1,0 +1,11 @@
+{
+  "_comment": "Expected SHA-256 of each overridden file's PRISTINE upstream content, captured from a clean managed_components/ fetch (CMakeLists.txt's apply_vendor_overrides.py call temporarily disabled) against the exact locked versions in dependencies.lock: espressif__tinyusb 0.21.0~2, lvgl__lvgl 8.3.11, espressif__arduino-esp32 3.3.12, espressif__esp_hosted 2.13.0, espressif__esp_tinyusb 1.7.6~2 (component_hash 6a50305b... -- a DIFFERENT managed component from espressif__tinyusb above, confirm you're not confusing the two). Re-capture this manifest (see apply_vendor_overrides.py's header for the exact steps) whenever dependencies.lock changes one of these components' version -- an expected hash mismatch after a deliberate version bump is correct, expected behavior, not a bug.",
+  "espressif__tinyusb/src/tusb.h": "e08b91989255a25de82c270fd5620d197035bd83c8d537451aab9b2dcdc6cb58",
+  "lvgl__lvgl/src/core/lv_refr.c": "1509818f43df2f721c06f4a7b591469e434cb524186595460006fe1bd9470c47",
+  "espressif__arduino-esp32/cores/esp32/USBCDC.cpp": "edede4afa2e6c68c404debfd05c0affb1870cf1008a2caaa0304091c42b242c6",
+  "espressif__arduino-esp32/cores/esp32/USBMSC.cpp": "c210c64cf1413367eabf1a43405201bfe8f591e857553b5fb45ea5133f3faeb7",
+  "espressif__arduino-esp32/variants/esp32p4/pins_arduino.h": "5dca1dbec4e8f1b9bb8643495f969659f692e36cf1ce8774d61078e88baa3cc5",
+  "espressif__tinyusb/src/class/hid/hid_device.c": "a168e91cac81135905a52eb7da2a2b113134afb5b32ac04307de486146696132",
+  "espressif__esp_hosted/host/port/esp/freertos/src/port_esp_hosted_host_init.c": "232225d570d8c9546b11030d515f7e1b9aa92688d8493d0f6d0e1c54a9c8a618",
+  "espressif__esp_tinyusb/tusb_msc_storage.c": "f5c80e59ba983e3ede6d78eb20f7dd10f9afcd3ceab9bc0b117a45a46edfc06e"
+}
