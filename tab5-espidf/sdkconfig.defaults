@@ -136,6 +136,13 @@ CONFIG_HTTPD_WS_SUPPORT=y
 # D3=8, reset=15 -- exactly Tab5-Orion's own TAB5_SDIO_* constants in
 # tab5_ref/Tab5-Orion/main/wifi.c) -- just select it.
 CONFIG_ESP32P4_TAB5_C6_BOARD=y
+# TEST: empirically checking reset polarity on real hardware before this is
+# documented for real (see B/HARDWARE_TEST_TRACKER.md's SDIO investigation).
+# esp_hosted's own Kconfig defaults this to ACTIVE_LOW specifically when
+# ESP32P4_TAB5_C6_BOARD is selected; forcing ACTIVE_HIGH here to test against
+# the shipped zip's ACTIVE_LOW default, which reliably fails SDIO bring-up
+# on this unit.
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
 # This alone is NOT sufficient for arduino-esp32's WiFi.softAP()/WiFi.mode()
 # path specifically (confirmed on real hardware) -- esp32-hal-hosted.c reads
 # hardcoded BOARD_SDIO_ESP_HOSTED_* macros from the generic "esp32p4" Arduino
