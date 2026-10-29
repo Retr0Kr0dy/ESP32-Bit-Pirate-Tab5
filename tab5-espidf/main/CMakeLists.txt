@@ -417,7 +417,6 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
   # pin already committed to internal use. Derived from lib/SIC/docs/PINS_TAB5.md
   # + lib/SIC/src/boards/tab5/ioexpander.h (both read directly, not from memory):
   #   0,1    -- keyboard-accessory I2C (TAB5_KBD_I2C_SDA/SCL)
-  #   8-13,15 -- SDIO to the ESP32-C6 co-processor (CLK/CMD/D0-D3) + C6 RST
   #   22     -- backlight PWM
   #   23     -- touch INT
   #   26-30  -- I2S0 audio (DOUT/BCLK/DIN/WS/MCLK)
@@ -425,10 +424,28 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
   #             specific pair this fix exists to make sure DIO can't touch
   #   36     -- camera XCLK
   #   39-44  -- SD card SDMMC (D0-D3/CLK/CMD)
+  # This tier is confirmable: DioController::isPinAllowed() warns and lets
+  # the user proceed anyway, because touching any of these just loses that
+  # one peripheral until reboot -- recoverable, not catastrophic.
   # Deliberately NOT included: Grove A (53,54), Grove B/M-Bus free GPIO
   # (16,17,45,52,3,4,2,48,47,35,51), Grove C (6,7) -- all legitimately free
   # and some already wired above; protecting those would break I2C/2WIRE.
-  "PROTECTED_PINS=\"0,1,8,9,10,11,12,13,15,22,23,26,27,28,29,30,31,32,36,39,40,41,42,43,44\""
+  "PROTECTED_PINS=\"0,1,22,23,26,27,28,29,30,31,32,36,39,40,41,42,43,44\""
+
+  # ---- Hard-reserved pins: a second, stricter tier DioController::
+  # isPinAllowed() checks before the confirmable PROTECTED_PINS list above,
+  # with no "use it anyway?" escape at all. These 7 are specifically the
+  # SDIO link to the ESP32-C6 co-processor (CLK/CMD/D0-D3 + C6 RST) that
+  # the hosted Wi-Fi/BLE stack depends on while it's live -- bit-banging
+  # any of them via DIO doesn't just lose one peripheral the way the
+  # confirmable tier's pins do, it can glitch an in-flight SDIO bus
+  # transaction (same bus this session spent real hardware time
+  # root-causing a cold-boot bring-up regression on -- see
+  # B/HARDWARE_TEST_TRACKER.md's CRITICAL section). A confirmation prompt
+  # is the wrong protection for that: it reads as "are you sure", not "this
+  # will silently corrupt your live wireless link," so it's not offered at
+  # all for this specific set.
+  "HARD_RESERVED_PINS=\"8,9,10,11,12,13,15\""
 
   # ---- DioController.cpp's shared isPinAllowed() hardcodes "pin > 48 /*
   # max pin for S3 */" with no per-board override point. 48 is wrong for
