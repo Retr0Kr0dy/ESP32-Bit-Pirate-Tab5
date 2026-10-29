@@ -223,6 +223,10 @@ static const uint8_t s_hs_config_desc_no_msc[] = {
 
 // ---- Lifecycle -------------------------------------------------------------
 static bool s_running = false;
+static bool s_msc_opt_in = false;
+static bool s_teardown_failed = false;
+
+bool usb_device_teardown_failed(void) { return s_teardown_failed; }
 
 void usb_device_configure(const usb_device_ids_t* ids) {
     if (!ids) return;
@@ -234,15 +238,24 @@ void usb_device_configure(const usb_device_ids_t* ids) {
 }
 
 bool usb_device_start(void) {
+    if (s_teardown_failed) {
+        ESP_LOGE(TAG, "refusing to start: a previous tinyusb_driver_uninstall() "
+                 "failed and this device was never confirmed fully torn down -- "
+                 "reinstalling on top of unknown driver state risks corrupting "
+                 "the TinyUSB stack or USB-OTG hardware further. Reboot the "
+                 "device to recover.");
+        return false;
+    }
     if (s_running) return true;
 
-    // Try to grab the SD card for MSC regardless of which specific feature
-    // triggered this start (keyboard/mouse/gamepad/sysctrl/stick all funnel
-    // through this one composite-device bring-up) -- the MSC-vs-no-MSC
-    // descriptor choice below has to be made once, for the whole session,
-    // before the driver installs. See the config descriptor block's header
-    // comment for why this can't be "attach later if asked".
-    bool haveMsc = usb_msc_attach_sdcard();
+    // Only grab the SD card for MSC when the caller has explicitly opted in
+    // (see usb_msc_set_opt_in()'s own comment) -- otherwise a plain
+    // "usb keyboard"/"usb host" session would silently take the card away
+    // from local FatFs access just because one happens to be inserted. The
+    // MSC-vs-no-MSC descriptor choice below has to be made once, for the
+    // whole session, before the driver installs. See the config descriptor
+    // block's header comment for why this can't be "attach later if asked".
+    bool haveMsc = s_msc_opt_in && usb_msc_attach_sdcard();
 
     s_string_desc[0] = s_langid;
     s_string_desc[1] = s_manufacturer;
@@ -262,24 +275,58 @@ bool usb_device_start(void) {
     };
 
     if (!haveMsc) {
-        ESP_LOGW(TAG, "no SD card available -- starting HID-only (no MSC interface this session)");
+        ESP_LOGW(TAG, "%s -- starting HID-only (no MSC interface this session)",
+                 s_msc_opt_in ? "no SD card available" : "MSC not opted in (run sdusb on/stick)");
     }
 
     esp_err_t err = tinyusb_driver_install(&cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "tinyusb_driver_install failed: %d", (int)err);
+        if (haveMsc) {
+            // usb_msc_attach_sdcard() above already succeeded and claimed
+            // the card -- but the USB device that was supposed to use it
+            // never actually started. Previously this left the card
+            // permanently USB-owned with nothing consuming it, blocking
+            // local access forever. Tear back down via the same path
+            // usb_device_stop() uses, so local can reclaim it.
+            usb_msc_detach_sdcard();
+        }
         return false;
     }
 
     s_running = true;
-    ESP_LOGI(TAG, "USB device started (HID keyboard/mouse/gamepad/sysctrl + CDC + MSC)");
+    ESP_LOGI(TAG, "USB device started (HID keyboard/mouse/gamepad/sysctrl + CDC%s)", haveMsc ? " + MSC" : "");
     return true;
 }
 
 void usb_device_stop(void) {
     if (!s_running) return;
-    tinyusb_driver_uninstall();
+    // tinyusb_driver_uninstall() can genuinely fail (ESP_FAIL, "internal
+    // error" per its own doc comment -- it doesn't say which of its several
+    // steps: task stop, stack teardown, resource free, or PHY delete). On
+    // failure we can't be sure TinyUSB/MSC are actually done with the SD
+    // card, so releasing it anyway would be the same class of hazard the
+    // SD ownership fixes above exist to prevent -- a second owner reaching
+    // for a card the first one might still be using. s_running still goes
+    // false either way: on a previously-failed uninstall, the alternative
+    // (leaving it true forever) would permanently block every future
+    // usb_device_start() call too, which is worse than allowing a retry.
+    esp_err_t err = tinyusb_driver_uninstall();
     s_running = false;
+    if (err != ESP_OK) {
+        // Previously this just logged and returned, leaving s_running false
+        // -- which let a subsequent usb_device_start() call proceed to
+        // tinyusb_driver_install() on top of a driver stack whose teardown
+        // never actually completed (ESP-IDF's own doc comment: failure here
+        // is just "internal error", with no indication of which internal
+        // step -- task stop, stack teardown, resource free, PHY delete --
+        // didn't finish). s_teardown_failed now blocks every future
+        // usb_device_start() call instead; there's no supported recovery
+        // API for this failure, so the only way out is a reboot.
+        s_teardown_failed = true;
+        ESP_LOGE(TAG, "tinyusb_driver_uninstall failed: %d -- leaving SD card USB-owned, not releasing it, and blocking further usb_device_start() calls until reboot", (int)err);
+        return;
+    }
     // usb_device_start() always attempts the attach itself (see its own
     // comment) regardless of whether the caller ever asked for storage
     // specifically -- detach here unconditionally too, rather than relying
@@ -464,6 +511,9 @@ static sdmmc_card_t* s_msc_card = NULL;
 static sd_pwr_ctrl_handle_t s_msc_pwr = NULL;
 static int s_msc_slot = -1;
 
+void usb_msc_set_opt_in(bool enabled) { s_msc_opt_in = enabled; }
+bool usb_msc_get_opt_in(void) { return s_msc_opt_in; }
+
 bool usb_msc_sdcard_attached(void) { return s_msc_card != NULL; }
 
 bool usb_msc_attach_sdcard(void) {
@@ -475,13 +525,25 @@ bool usb_msc_attach_sdcard(void) {
         return false;
     }
 
-    sic_sd_sdmmc_release_for_usb(); // give up SIC's own mount first (see header comment)
+    // Atomically claim ownership and release SIC's own mount as one
+    // operation, under sic_sd_sdmmc_claim_for_usb()'s own lock -- not two
+    // separate calls (mark ownership, then release) with nothing
+    // serializing them against a concurrent local sd_sdmmc_begin(), which
+    // could previously read g_usb_owns_sd as still false in the gap
+    // between those two calls and start mounting right as this was taking
+    // the card away. See sic_sd_sdmmc_claim_for_usb()'s own header comment.
+    // On failure it has already rolled ownership back to false itself.
+    if (sic_sd_sdmmc_claim_for_usb() != 0) {
+        ESP_LOGE(TAG, "local SD unmount failed -- refusing to attach MSC (card may be in use)");
+        return false;
+    }
 
     if (cfg->ldo_chan >= 0) {
         sd_pwr_ctrl_ldo_config_t ldo_cfg = { .ldo_chan_id = cfg->ldo_chan };
         if (sd_pwr_ctrl_new_on_chip_ldo(&ldo_cfg, &s_msc_pwr) != ESP_OK) {
             ESP_LOGE(TAG, "SD LDO power-up failed");
             s_msc_pwr = NULL;
+            sic_sd_sdmmc_mark_usb_owner(false);
             return false;
         }
     }
@@ -512,6 +574,8 @@ bool usb_msc_attach_sdcard(void) {
         goto fail_card;
     }
 
+    // Ownership was already marked true inside sic_sd_sdmmc_claim_for_usb()
+    // above -- nothing to set here now.
     ESP_LOGI(TAG, "USB MSC: SD card attached");
     return true;
 
@@ -525,6 +589,12 @@ fail_host:
 fail:
     if (s_msc_pwr) { sd_pwr_ctrl_del_on_chip_ldo(s_msc_pwr); s_msc_pwr = NULL; }
     s_msc_slot = -1;
+    // The local mount was already released by this point (we only reach
+    // these labels after sic_sd_sdmmc_release_for_usb() succeeded) -- roll
+    // ownership back so sd_sdmmc_begin()'s existing lazy-remount path can
+    // actually reclaim the card on next local access, instead of leaving
+    // it permanently locked out behind a USB attach that never finished.
+    sic_sd_sdmmc_mark_usb_owner(false);
     return false;
 }
 
@@ -556,4 +626,7 @@ void usb_msc_detach_sdcard(void) {
     // SIC's own g_ctx.mounted is already 0 (release_for_usb() cleared it) --
     // the next normal SD access (file browser, etc.) remounts from scratch
     // via sd_sdmmc_begin()'s existing lazy path, same as a fresh card swap.
+    // Clear the ownership flag so that lazy remount is actually allowed to
+    // proceed now -- sic_sd_sdmmc_mark_usb_owner(true)'s own comment.
+    sic_sd_sdmmc_mark_usb_owner(false);
 }

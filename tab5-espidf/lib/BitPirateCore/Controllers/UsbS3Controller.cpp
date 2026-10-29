@@ -31,6 +31,7 @@ Entry point for command
 */
 void UsbS3Controller::handleCommand(const TerminalCommand& cmd) {
     if (cmd.getRoot() == "stick" || cmd.getRoot() == "storage") handleUsbStick();
+    else if (cmd.getRoot() == "sdusb") handleSdUsb(cmd);
     else if (cmd.getRoot() == "keyboard") handleKeyboard(cmd);
     else if (cmd.getRoot() == "mouse") handleMouse(cmd);
     else if (cmd.getRoot() == "gamepad") handleGamepad(cmd);
@@ -412,6 +413,49 @@ void UsbS3Controller::handleUsbStick() {
         terminalView.println("\n ✅ USB Stick configured. Mounting drive... (Can take up to 30 sec)\n");
     } else {
         terminalView.println("\n ❌ USB Stick configuration failed. No SD card detected.\n");
+    }
+}
+
+/*
+SD USB (explicit MSC opt-in -- same mechanism handleUsbStick() uses, exposed
+directly so the SD card is never claimed for USB just because some other USB
+feature -- keyboard/mouse/gamepad/host -- happened to start first)
+*/
+void UsbS3Controller::handleSdUsb(const TerminalCommand& cmd) {
+    std::string sub = cmd.getSubcommand();
+    std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
+
+    if (sub == "on") {
+        usbService.configure(
+            state.getUSBProductString(),
+            state.getUSBManufacturerString(),
+            state.getUSBSerialString(),
+            state.getUSBVid(),
+            state.getUSBPid(),
+            state.getWebUSBString()
+        );
+        terminalView.println("SD USB: Enabling MSC interface... (can take up to 30 sec)");
+        usbService.sdUsbEnable();
+        if (usbService.isStorageActive()) {
+            terminalView.println("\n ✅ SD USB enabled. SD card exposed as USB mass storage.\n");
+        } else {
+            terminalView.println("\n ❌ SD USB enable failed. No SD card detected.\n");
+        }
+    }
+    else if (sub == "off") {
+        terminalView.println("SD USB: Disabling MSC interface...");
+        usbService.sdUsbDisable();
+        terminalView.println("SD USB: Done. SD card released back to local access.");
+    }
+    else if (sub == "status" || sub.empty()) {
+        terminalView.println("\n=== SD USB Status ===");
+        terminalView.println(std::string("Opt-in     : ") + (usbService.sdUsbIsEnabled() ? "on" : "off"));
+        terminalView.println(std::string("Card active: ") + (usbService.isStorageActive() ? "yes" : "no"));
+    }
+    else {
+        terminalView.println("Usage: sdusb on");
+        terminalView.println("       sdusb off");
+        terminalView.println("       sdusb status");
     }
 }
 

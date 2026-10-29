@@ -40,6 +40,9 @@ private:
     // Simulate USB mass storage mount
     void handleUsbStick();
 
+    // Explicit sdusb on/off/status opt-in gate
+    void handleSdUsb(const TerminalCommand& cmd);
+
     // Move the HID mouse cursor
     void handleMouseMove(const TerminalCommand& cmd);
 

@@ -32,10 +32,14 @@
  * comment in lib/SIC/include/sic/storage/sd_sdmmc.h for the full handoff
  * design (the SD card can only have one FatFs mount at a time).
  * usb_msc_attach_sdcard() must be called (and succeed) BEFORE
- * usb_device_start() for the MSC interface to actually expose real media;
- * if no card is present, the MSC interface is still present in the
- * descriptor (CONFIG_TINYUSB_MSC_ENABLED is a build-time toggle) but has no
- * backing media registered until `usb stick` is run with a card inserted.
+ * usb_device_start() for the MSC interface to actually expose real media.
+ * usb_device_start() only calls it at all when usb_msc_set_opt_in(true) has
+ * been called first (see that function's own comment) -- otherwise the MSC
+ * interface is left out of the descriptor entirely for that session, same
+ * as the "no card present" case. Either way the composite descriptor is
+ * fixed at driver-install time, so toggling the opt-in flag while the
+ * device is already running requires a full usb_device_stop()+
+ * usb_device_start() to take effect.
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -71,6 +75,16 @@ bool usb_device_start(void);
 void usb_device_stop(void);
 bool usb_device_is_running(void);
 
+// True once a tinyusb_driver_uninstall() call inside usb_device_stop() has
+// failed. ESP-IDF documents that failure only as "internal error" with no
+// indication of which internal step (task stop, stack teardown, resource
+// free, PHY delete) didn't complete -- reinstalling on top of that unknown
+// state risks corrupting the TinyUSB stack or the USB-OTG hardware further.
+// usb_device_start() refuses to run at all while this is true. There is no
+// supported in-firmware recovery from this state (ESP-IDF gives no retry/
+// recovery API for a failed uninstall) -- the only way out is a reboot.
+bool usb_device_teardown_failed(void);
+
 // ---- HID --------------------------------------------------------------
 void usb_hid_keyboard_write_char(char c);
 void usb_hid_keyboard_release_all(void);
@@ -102,6 +116,14 @@ void usb_cdc_write(const char* data, size_t len);
 bool usb_cdc_connected(void);
 
 // ---- MSC (SD card) -------------------------------------------------------
+// Opt-in gate: usb_device_start() only attempts usb_msc_attach_sdcard() when
+// this is true. Defaults to false -- plugging in for HID-only use (keyboard/
+// mouse/gamepad/host) must not silently claim the SD card away from local
+// FatFs access just because a card happens to be present. The "sdusb"/
+// "stick"/"storage" commands are the only callers that set this true.
+void usb_msc_set_opt_in(bool enabled);
+bool usb_msc_get_opt_in(void);
+
 // Takes exclusive ownership of the SD card from SIC's own FatFs mount (see
 // this header's top comment). Call before usb_device_start(). Returns false
 // if no card is present/initializable -- non-fatal, the composite device

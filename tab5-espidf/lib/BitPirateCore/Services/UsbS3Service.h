@@ -38,6 +38,9 @@ public:
 
     // Mass Storage mode
     void storageBegin(uint8_t cs, uint8_t clk, uint8_t miso, uint8_t mosi);
+    void sdUsbEnable();
+    void sdUsbDisable();
+    bool sdUsbIsEnabled() const;
 
     // Mouse actions
     void mouseBegin();
@@ -68,8 +71,6 @@ public:
     std::string getUsbSerialFromEfuseMac();
 
 private:
-    bool initialized;
-
     // HID
     bool gamepadActive = false;
     bool keyboardActive = false;

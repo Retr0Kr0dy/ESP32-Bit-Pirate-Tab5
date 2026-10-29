@@ -23,6 +23,14 @@ public:
 
     virtual void storageBegin(uint8_t cs, uint8_t clk, uint8_t miso, uint8_t mosi) = 0;
 
+    // sdusb opt-in -- see main/usb_device.c's usb_msc_set_opt_in() comment.
+    // sdUsbEnable() is what storageBegin() calls into; sdUsbDisable() tears
+    // the MSC interface back out (full composite restart if other USB
+    // features are still active) without touching those other features.
+    virtual void sdUsbEnable() = 0;
+    virtual void sdUsbDisable() = 0;
+    virtual bool sdUsbIsEnabled() const = 0;
+
     virtual void mouseBegin() = 0;
     virtual void mouseMove(int x, int y) = 0;
     virtual void mouseClick(int button) = 0;

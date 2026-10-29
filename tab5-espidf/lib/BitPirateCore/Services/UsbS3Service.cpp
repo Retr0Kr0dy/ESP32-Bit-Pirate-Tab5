@@ -16,7 +16,7 @@ namespace {
 }
 
 UsbS3Service::UsbS3Service()
-  : initialized(false), keyboardActive(false), storageActive(false) {}
+  : keyboardActive(false), storageActive(false) {}
 
 void UsbS3Service::configure(const char* productStr, const char* manufacturerStr, const char* serialStr, uint16_t vid, uint16_t pid, const char* /*webUSBString*/) {
     // webUSBURL has no equivalent in the native bridge (no WebUSB class
@@ -154,16 +154,52 @@ void UsbS3Service::storageBegin(uint8_t /*cs*/, uint8_t /*clk*/, uint8_t /*miso*
     // in lib/SIC/include/sic/storage/sd_sdmmc.h), so main/usb_device.c's
     // usb_msc_attach_sdcard() gets its pins from the board profile rather
     // than from this call's arguments.
-    if (initialized) return;
+    sdUsbEnable();
+}
 
-    // usb_device_start() always attempts usb_msc_attach_sdcard() itself as
-    // part of its one-shot composite bring-up (every feature shares the
-    // same physical device, see that function's own comment), so just
-    // starting it here is enough; isStorageActive() reflects whatever that
-    // attempt actually achieved.
+void UsbS3Service::sdUsbEnable() {
+    if (usb_msc_get_opt_in() && usb_device_is_running()) {
+        // Already opted in and the composite device is up -- nothing to do.
+        storageActive = usb_msc_sdcard_attached();
+        return;
+    }
+
+    usb_msc_set_opt_in(true);
+
+    // The MSC-vs-no-MSC choice is baked into the composite descriptor at
+    // tinyusb_driver_install() time (see usb_device.h's header comment), so
+    // if the device is already running without MSC (e.g. "usb keyboard" ran
+    // first), it has to be torn down and brought back up for the new opt-in
+    // to actually add the interface.
+    if (usb_device_is_running()) {
+        usb_device_stop();
+    }
+
     usb_device_start();
     storageActive = usb_msc_sdcard_attached();
-    initialized = true;
+}
+
+void UsbS3Service::sdUsbDisable() {
+    usb_msc_set_opt_in(false);
+
+    // Always bring the composite device back up after this, even with no
+    // other HID feature active: its CDC interface is the plain USB-serial
+    // CLI (confirmed live from boot, before any "usb ..." command ever
+    // runs -- see main/boards/tab5_bitpirate/BitPirateTask.cpp's own
+    // unconditional usb_device_start() call), not an optional feature this
+    // service tracks a flag for. Leaving it stopped here would silently cut
+    // the user's own USB-serial session -- the one they just used to type
+    // "sdusb off" -- with nothing to bring it back except a manual reboot.
+    if (usb_device_is_running()) {
+        usb_device_stop();
+        usb_device_start();
+    }
+
+    storageActive = usb_msc_sdcard_attached();
+}
+
+bool UsbS3Service::sdUsbIsEnabled() const {
+    return usb_msc_get_opt_in();
 }
 
 bool UsbS3Service::stopTinyUsbDevice() {
@@ -327,18 +363,37 @@ void UsbS3Service::systemPowerOff(uint32_t holdMs) {
 }
 
 void UsbS3Service::reset() {
-    if (initialized) {
-        usb_hid_keyboard_release_all();
-        usb_hid_sysctrl_release();
-        usb_device_stop(); // also detaches the SD card, if attached
-        initialized = false;
-        keyboardActive = false;
-        storageActive = false;
-        mouseActive = false;
-        systemControlActive = false;
-        gamepadActive = false;
-        hostInstalled = false;
-    }
+    // Previously gated on "initialized", a flag only storageBegin() ever
+    // set -- a keyboard/mouse/gamepad-only session (the common case) left
+    // it false forever, so "usb reset" silently did nothing: the device
+    // stayed up and every *Active flag stayed true. usb_hid_*_release() are
+    // self-contained no-ops when the device isn't running, so there's
+    // nothing to gate on those.
+    usb_hid_keyboard_release_all();
+    usb_hid_sysctrl_release();
+
+    // Earlier version of this fix called usb_msc_detach_sdcard() directly
+    // here. That's wrong whenever MSC is actually live: the MSC-vs-no-MSC
+    // choice is baked into the enumerated USB descriptor at
+    // tinyusb_driver_install() time (see usb_device.h's header comment), so
+    // detaching the backing card without a full stop+restart leaves the
+    // interface still advertised to the host while its backing storage is
+    // already torn down underneath it -- the same class of hazard
+    // tud_umount_cb()'s NULL-deref fix exists for, just in the opposite
+    // direction (a host that still thinks it has a mounted drive, pointed
+    // at freed storage, instead of a benign disconnect callback on
+    // never-attached storage). sdUsbDisable() already does the correct
+    // stop+restart cycle for exactly this transition, and leaves the CDC
+    // interface (the plain USB-serial CLI the user is presumably typing
+    // "reset" through right now) running afterward either way -- safe to
+    // call unconditionally even when MSC was never opted in.
+    sdUsbDisable();
+
+    keyboardActive = false;
+    mouseActive = false;
+    systemControlActive = false;
+    gamepadActive = false;
+    hostInstalled = false;
 }
 
 // TODO: Rework this func to something more manageable

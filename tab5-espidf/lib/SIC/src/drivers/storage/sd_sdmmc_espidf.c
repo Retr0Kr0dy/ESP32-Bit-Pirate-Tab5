@@ -33,6 +33,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "esp_timer.h"
 
 #include "driver/sdmmc_host.h"
@@ -59,11 +61,59 @@ typedef struct {
 
 static sd_sdmmc_ctx_t g_ctx;
 static sd_t            g_sd;
+static bool            g_usb_owns_sd = false;
 
-static int sd_sdmmc_begin(const void* self) {
+// Serializes every operation that reads-then-acts on g_usb_owns_sd/g_ctx
+// against the SD card hardware: sd_sdmmc_begin_locked() below (the full
+// local mount attempt) and sic_sd_sdmmc_claim_for_usb() (USB's ownership
+// claim + local release). Without this, a check-then-act gap between the
+// two sides -- local reads g_usb_owns_sd==false and starts mounting, USB
+// concurrently sets it true and releases the local mount out from under
+// that in-progress attempt -- let both sides reach for the same physical
+// card at once. Static allocation (no heap, no lazy-init race on first
+// use): the StaticSemaphore_t buffer backs the handle for the life of the
+// program.
+static StaticSemaphore_t g_owner_mutex_buf;
+static SemaphoreHandle_t g_owner_mutex = NULL;
+
+static SemaphoreHandle_t owner_mutex(void) {
+    if (!g_owner_mutex) g_owner_mutex = xSemaphoreCreateMutexStatic(&g_owner_mutex_buf);
+    return g_owner_mutex;
+}
+
+void sic_sd_sdmmc_mark_usb_owner(bool owned) { g_usb_owns_sd = owned; }
+bool sic_sd_sdmmc_is_usb_owner(void) { return g_usb_owns_sd; }
+
+// USB's atomic claim: check-and-set g_usb_owns_sd plus the local release,
+// all under the same lock sd_sdmmc_begin_locked() takes for its own full
+// mount attempt -- see owner_mutex()'s own comment for the race this
+// closes. Replaces the separate sic_sd_sdmmc_mark_usb_owner(true) +
+// sic_sd_sdmmc_release_for_usb() pair usb_msc_attach_sdcard() used to call
+// back to back with nothing serializing them against a concurrent local
+// mount. Returns 0 and leaves ownership marked true on success (matching
+// sic_sd_sdmmc_release_for_usb()'s own 0/-1 contract); on failure, rolls
+// ownership back to false before returning -1 -- the caller doesn't need
+// its own separate rollback call for this specific step anymore (its
+// later failure paths, after this returns successfully, still do).
+int sic_sd_sdmmc_claim_for_usb(void) {
+    xSemaphoreTake(owner_mutex(), portMAX_DELAY);
+    g_usb_owns_sd = true;
+    int rc = sic_sd_sdmmc_release_for_usb();
+    if (rc != 0) g_usb_owns_sd = false;
+    xSemaphoreGive(owner_mutex());
+    return rc;
+}
+
+static int sd_sdmmc_begin_locked(const void* self) {
     sd_sdmmc_ctx_t* c = (sd_sdmmc_ctx_t*)((const sd_t*)self)->impl;
     if (!c) return -1;
     if (c->mounted) return 0;
+    // USB MSC currently has this card open on its own independent SDMMC
+    // session (slot 0, same pins) -- mounting a second, local FAT session
+    // on top of that races two caches against the same physical card. See
+    // sic_sd_sdmmc_mark_usb_owner()'s own header comment for the full
+    // handoff story this closes.
+    if (g_usb_owns_sd) return -1;
 
     /* Orion is now a standalone product UI: an SD card is optional at boot
      * and may be inserted later for media or a hot-loaded theme.  The old
@@ -133,6 +183,17 @@ static int sd_sdmmc_begin(const void* self) {
     return 0;
 }
 
+// Public entry point (keeps the exact name/signature every existing caller
+// and the g_sd vtable already use) -- just adds the same lock
+// sic_sd_sdmmc_claim_for_usb() takes around the real logic above, so a
+// local mount attempt and a concurrent USB ownership claim can't interleave.
+static int sd_sdmmc_begin(const void* self) {
+    xSemaphoreTake(owner_mutex(), portMAX_DELAY);
+    int rc = sd_sdmmc_begin_locked(self);
+    xSemaphoreGive(owner_mutex());
+    return rc;
+}
+
 static int sd_sdmmc_present(const void* self) {
     const sd_t* sd = (const sd_t*)self;
     sd_sdmmc_ctx_t* c = sd ? (sd_sdmmc_ctx_t*)sd->impl : NULL;
@@ -170,6 +231,17 @@ static int probe_sd_sdmmc(const void* icdesc, void** out) {
 int sic_sd_sdmmc_release_for_usb(void) {
     if (!g_ctx.mounted) return 0;
     esp_err_t err = esp_vfs_fat_sdcard_unmount(SD_SDMMC_MOUNT_POINT, g_ctx.card);
+    if (err != ESP_OK) {
+        // Unmount failed -- leave g_ctx exactly as it was (still "mounted",
+        // still the same card/power handle) instead of discarding state the
+        // caller didn't actually win. The caller (usb_msc_attach_sdcard())
+        // already refuses to proceed to MSC on a nonzero return; this is
+        // what makes that refusal actually mean "local still owns it"
+        // rather than leaving both sides thinking nobody does. Previously
+        // this cleared g_ctx unconditionally even on failure -- confirmed
+        // wrong, see B/HARDWARE_TEST_TRACKER.md's SD/MSC ownership finding.
+        return -1;
+    }
     g_ctx.card = NULL;
     g_ctx.mounted = 0;
     /* esp_vfs_fat_sdcard_unmount() tears down the host+card it was given,
@@ -184,7 +256,7 @@ int sic_sd_sdmmc_release_for_usb(void) {
         sd_pwr_ctrl_del_on_chip_ldo(g_ctx.pwr_handle);
         g_ctx.pwr_handle = NULL;
     }
-    return err == ESP_OK ? 0 : -1;
+    return 0;
 }
 
 const sic_sd_sdmmc_cfg_t* sic_sd_sdmmc_last_cfg(void) {

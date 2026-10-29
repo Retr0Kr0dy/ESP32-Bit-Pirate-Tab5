@@ -44,7 +44,21 @@
 /* Boot-time OUT_SET values, also used to seed the write shadow so
  * tab5_ioexp_set() never needs an extra I2C read before its write. */
 #define EXP0_BOOT_OUT_SET 0x76u /* 0b01110110: SPK_EN, EXT5V_EN, LCD_RST, TP_RST, CAM_RST high; resets deasserted */
-#define EXP1_BOOT_OUT_SET 0x89u /* 0b10001001: CHG_EN, USB5V_EN, WLAN_PWR_EN high */
+/* USB5V_EN left LOW here (was high, matching M5Stack's stock firmware,
+ * which runs this port as a USB HOST and needs to source VBUS to a
+ * downstream peripheral). This fork runs the same physical port's PHY as a
+ * USB DEVICE instead (main/usb_device.c's native TinyUSB composite,
+ * HID+CDC+MSC) -- confirmed against the official Tab5 schematic
+ * (Tab5_Schematics_PDF.pdf, page 4/5): USB5V_EN gates U27 (MT9700 load
+ * switch) whose output drives J10 (the USB-A connector) VCC pin directly,
+ * and the MT9700 only blocks reverse current while *disabled* -- while
+ * enabled (the previous default, unconditionally, forever) it's a plain
+ * bidirectional FET, so a host PC's own VBUS on that same pin backfeeds
+ * straight into this board's internal 5V rail with no protection at all,
+ * every single time USB-A is plugged into a host. See
+ * B/HARDWARE_TEST_TRACKER.md's "Second review pass" section for the full
+ * trace and the USB-A hardware fault this was found investigating. */
+#define EXP1_BOOT_OUT_SET 0x81u /* 0b10000001: CHG_EN, WLAN_PWR_EN high; USB5V_EN low */
 
 static uint8_t g_out_shadow[2] = { EXP0_BOOT_OUT_SET, EXP1_BOOT_OUT_SET };
 static uint8_t g_addr[2]       = { TAB5_IOEXP0_ADDR, TAB5_IOEXP1_ADDR };
@@ -125,7 +139,7 @@ void tab5_ioexp_init(void) {
                         0xF9u,              /* PULL_EN:   0b11111001 */
                         0x40u, 1,           /* IN_DEF_STA: 0b01000000 */
                         0xBFu, 1,           /* INT_MASK:   0b10111111 */
-                        EXP1_BOOT_OUT_SET); /* OUT_SET:   0b10001001 (CHG_EN intentionally high) */
+                        EXP1_BOOT_OUT_SET); /* OUT_SET:   0b10000001 (CHG_EN intentionally high, USB5V_EN intentionally low -- see EXP1_BOOT_OUT_SET's own comment above) */
 }
 
 int tab5_ioexp_set(int exp, int bit, int level) {
