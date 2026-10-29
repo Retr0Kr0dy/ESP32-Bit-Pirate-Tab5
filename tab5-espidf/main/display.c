@@ -603,9 +603,18 @@ int orion_display_init(void)
 
     tab5_panel_kind_t kind = tab5_panel_detected();
     if (kind == TAB5_PANEL_UNKNOWN) {
-        ESP_LOGW(TAG, "panel UNKNOWN (SIC detect did not run or found "
-                      "nothing) - assuming ILI9881C");
-        kind = TAB5_PANEL_ILI9881C_GT911;
+        // Do NOT guess ILI9881C here: a genuine probe failure must stay
+        // distinguishable from a correct detection, not be silently relabeled
+        // as a successful one. Every downstream display.c function already
+        // guards on s_ready before touching the framebuffer (see e.g.
+        // orion_draw_sync()'s `if (!s_fb || !s_ready) return SGFX_ERR_NOSUP;`
+        // and orion_display_ready()/orion_gfx()), so returning here without
+        // ever reaching `s_ready = 1` is the existing, already-handled "not
+        // ready" contract -- not a new failure mode.
+        ESP_LOGE(TAG, "panel detection failed (SIC detect did not run or "
+                      "found nothing) - refusing to guess a panel model; "
+                      "display stays uninitialized");
+        return -2;
     }
 
     switch (kind) {

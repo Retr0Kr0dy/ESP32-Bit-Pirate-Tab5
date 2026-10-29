@@ -1047,7 +1047,7 @@ void UartController::handleSniffRaw() {
         return;
     }
 
-    if (state.isPinProtected(rxPin1) || state.isPinProtected(rxPin2)) {
+    if (state.isPinProtected(rxPin1) || state.isPinProtected(rxPin2) || state.isPinHardReserved(rxPin1) || state.isPinHardReserved(rxPin2)) {
         terminalView.println("UART Sniff: protected pin.");
         return;
     }
@@ -1078,7 +1078,7 @@ void UartController::handleSniffTxt() {
         return;
     }
 
-    if (state.isPinProtected(rxPin1) || state.isPinProtected(rxPin2)) {
+    if (state.isPinProtected(rxPin1) || state.isPinProtected(rxPin2) || state.isPinHardReserved(rxPin1) || state.isPinHardReserved(rxPin2)) {
         terminalView.println("UART Sniff: protected pin.");
         return;
     }

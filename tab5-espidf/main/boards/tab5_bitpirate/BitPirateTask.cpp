@@ -3,8 +3,6 @@
 #include <cstdint>
 
 #include "esp_log.h"
-#include "esp_task_wdt.h"
-#include "nvs.h"
 
 #include "Tab5TerminalView.h"
 #include "Tab5DeviceView.h"
@@ -40,19 +38,15 @@ extern "C" void bitpirate_task_entry(void* arg) {
     static NullDeviceInput nullDeviceInput;
 
     // Consume upstream one-shot USB adapter modes before the normal shell.
+    // No global esp_task_wdt_deinit() workaround here anymore: every
+    // one-shot adapter's loop (lib/BitPirateCore/Adapters/*.cpp) now uses a
+    // real vTaskDelay() instead of a bare yield() at its idle/wait point --
+    // a bare yield() can never let the (lowest-priority) idle task run, so
+    // it never feeds that task's watchdog subscription, which is what
+    // actually starved it (confirmed on real hardware,
+    // B/HARDWARE_TEST_TRACKER.md, T10) -- disabling the watchdog globally
+    // was masking that, not fixing it.
     {
-        // Workaround for adapter loops that starve the idle-task WDT.
-        // Review this global watchdog disable separately before release.
-        uint8_t pendingMode = 0;
-        nvs_handle_t peekHandle = 0;
-        if (nvs_open("wifi_settings", NVS_READONLY, &peekHandle) == ESP_OK) {
-            nvs_get_u8(peekHandle, "oneshot_boot", &pendingMode);
-            nvs_close(peekHandle);
-        }
-        if (pendingMode != 0) {
-            esp_task_wdt_deinit();
-        }
-
         static Tab5HostSerial hostSerial;
         static NvsService nvsService;
         BootModeConfigurator(devView, nullDeviceInput, nvsService, hostSerial).configure();

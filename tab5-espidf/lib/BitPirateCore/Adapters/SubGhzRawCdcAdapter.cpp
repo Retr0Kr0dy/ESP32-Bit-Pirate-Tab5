@@ -33,7 +33,11 @@ void SubGhzRawCdcAdapter::run(const SubGhzRawCdcConfig& adapterConfig, IInput& d
             }
         }
 
-        yield();
+        // A bare yield() can never let the (lowest-priority) idle task run,
+        // so it never feeds that task's watchdog subscription -- confirmed
+        // on real hardware for this exact pattern in a sibling one-shot
+        // adapter (B/HARDWARE_TEST_TRACKER.md, T10).
+        vTaskDelay(1);
     }
 }
 

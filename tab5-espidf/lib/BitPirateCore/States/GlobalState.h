@@ -17,6 +17,16 @@ private:
     //Pin in use
     std::vector<uint8_t> protectedPins;
 
+    // Hard-reserved: never accessible, not even via the "use it anyway?"
+    // confirmation protectedPins allows. Separate tier from protectedPins
+    // (which is otherwise-recoverable internal use -- lose the keyboard,
+    // backlight, audio, or SD until reboot) for pins whose misuse corrupts
+    // a live, in-flight bus transaction rather than just losing a
+    // peripheral -- on Tab5, specifically the ESP32-C6 SDIO link that the
+    // hosted Wi-Fi/BLE stack depends on: bit-banging those mid-transfer
+    // glitches the bus itself, not just the DIO command that touched it.
+    std::vector<uint8_t> hardReservedPins;
+
     // Builtin
     #ifdef LED_PIN
         static constexpr uint8_t ledPin = LED_PIN;
@@ -510,6 +520,14 @@ public:
         return std::find(protectedPins.begin(), protectedPins.end(), pin) != protectedPins.end();
     }
 
+    const std::vector<uint8_t>& getHardReservedPins() const {
+        return hardReservedPins;
+    }
+
+    bool isPinHardReserved(uint8_t pin) const {
+        return std::find(hardReservedPins.begin(), hardReservedPins.end(), pin) != hardReservedPins.end();
+    }
+
     bool isPinAnalog(uint8_t pin) const {
         return ((pin > 0) && (pin < 19));
     }
@@ -702,6 +720,18 @@ public:
             std::string item;
             while (std::getline(ss, item, ',')) {
                 protectedPins.push_back(std::stoi(item));
+            }
+        }
+        #endif
+
+        #ifdef HARD_RESERVED_PINS
+        {
+            hardReservedPins.clear();
+            std::string pinsStr = HARD_RESERVED_PINS;
+            std::stringstream ss(pinsStr);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                hardReservedPins.push_back(std::stoi(item));
             }
         }
         #endif

@@ -405,14 +405,26 @@ void SystemService::reboot(bool hard) const {
 }
 
 void SystemService::rebootToBootloader() const {
-    // Forcing UART download-boot mode on next reset is an S3/legacy-chip
-    // register trick, unavailable on P4 (BP_HAS_FORCE_DOWNLOAD_BOOT == 0).
-    // No P4 equivalent found/attempted -- just a plain restart there, which
-    // still exits this firmware but won't land directly in the ROM
-    // bootloader's download mode the way it does on S3. Real gap for
-    // UsbAdapterShell's reboot-into-{usb-uart-bridge,flashrom,avrdude}
-    // helpers: they'll restart back into this same app on P4, not into a
-    // bridge/programmer mode, until a P4-specific mechanism is found.
+    // P4 DOES have a direct equivalent of RTC_CNTL_OPTION1_REG/
+    // FORCE_DOWNLOAD_BOOT: LP_SYSTEM_REG_SYS_CTRL_REG bit 2
+    // (LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT) in soc/lp_system_reg.h, and setting
+    // it genuinely does force the ROM into "waiting for download" on the
+    // next reset -- confirmed on real hardware. That bit lives in the LP_AON
+    // domain, though, which is specifically designed to survive a warm/soft
+    // reset (same domain deep-sleep wake flags use) -- confirmed on real
+    // hardware that it survives not just esp_restart()/EN-pin resets but a
+    // full esptool write_flash+hard_reset cycle too, with nothing in this
+    // project (or, apparently, this esptool version's P4 support) ever
+    // clearing it afterward. Once set, the chip re-enters download mode on
+    // *every* subsequent reset -- including the reset at the end of a normal
+    // reflash -- with no way out except `esptool.py write_mem 0x50110008 0
+    // 0x4` (or an equivalent raw register poke) or possibly a true power-on
+    // reset, neither of which an ordinary user would know to reach for. That
+    // makes this a real soft-brick hazard, strictly worse than the gap it
+    // would "fix" (rebootToBootloader() just restarting normally on P4
+    // without entering true download mode), so it's deliberately NOT wired
+    // up here. BP_HAS_FORCE_DOWNLOAD_BOOT stays 0 for P4
+    // (Boards/Tab5Capabilities.h).
 #if BP_HAS_FORCE_DOWNLOAD_BOOT
     REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
 #endif

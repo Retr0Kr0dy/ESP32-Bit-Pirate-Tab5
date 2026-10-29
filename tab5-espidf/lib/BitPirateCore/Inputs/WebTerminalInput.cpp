@@ -2,11 +2,11 @@
 
 WebTerminalInput::WebTerminalInput(WebSocketServer& server) : server(server) {}
 
-char WebTerminalInput::handler() {
+char WebTerminalInput::handlerImpl() {
     return server.readCharBlocking();
 }
 
-char WebTerminalInput::readChar() {
+char WebTerminalInput::readCharImpl() {
     return server.readCharNonBlocking();
 }
 

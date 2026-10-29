@@ -22,6 +22,20 @@
 // RTC_CNTL_OPTION1_REG/FORCE_DOWNLOAD_BOOT (SystemService's
 // rebootToBootloader()) doesn't exist on P4 -- no soc/rtc_cntl_reg.h at all
 // for that target, confirmed against esp-idf's own esp32p4 soc headers.
+// P4 DOES have a direct equivalent (LP_SYSTEM_REG_SYS_CTRL_REG's
+// FORCE_DOWNLOAD_BOOT bit, soc/lp_system_reg.h) -- tried it, confirmed on
+// real hardware that it genuinely forces ROM download mode -- but that bit
+// lives in the LP_AON domain, which survives warm/soft resets by design
+// (same domain deep-sleep wake flags use). Confirmed on real hardware: once
+// set, it survives not just esp_restart() but a full esptool
+// write_flash+hard_reset cycle too, re-entering download mode on every
+// subsequent boot with no in-firmware way out (nothing of ours ever runs
+// while stuck) and no way out at all short of a raw esptool `write_mem`
+// register poke or a true power-on reset -- a real soft-brick hazard, worse
+// than the plain-restart gap it would "fix". Deliberately left disabled for
+// P4; see SystemService::rebootToBootloader()'s own comment for the
+// register address and poke if this is ever revisited with a safe way to
+// self-clear the bit.
 #if CONFIG_IDF_TARGET_ESP32P4
 #define BP_HAS_FORCE_DOWNLOAD_BOOT 0
 #else

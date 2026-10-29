@@ -34,7 +34,7 @@ static const char* const autoCompleteWords[] = {
     "send","receive","devicebgone","remote","replay","record","load",
 
     // --- USB ---
-    "stick", "storage","keyboard","mouse","gamepad","jiggle", "host", "sysctrl", "adapter",
+    "stick", "storage","sdusb","keyboard","mouse","gamepad","jiggle", "host", "sysctrl", "adapter",
 
     // --- BLUETOOTH ---
     "pair","spoof","status","server",

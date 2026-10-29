@@ -112,7 +112,7 @@ char Tab5TouchInput::pollOnce() {
     return KEY_NONE;
 }
 
-char Tab5TouchInput::handler() {
+char Tab5TouchInput::handlerImpl() {
     char c;
     do {
         c = pollOnce();
@@ -122,7 +122,7 @@ char Tab5TouchInput::handler() {
     return c;
 }
 
-char Tab5TouchInput::readChar() {
+char Tab5TouchInput::readCharImpl() {
     return pollOnce();
 }
 

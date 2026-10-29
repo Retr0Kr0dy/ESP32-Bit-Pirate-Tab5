@@ -81,13 +81,14 @@ void app_main(void)
     ESP_LOGI(TAG, "[GFX] orion_display_init rc=%d ready=%d panel=%s",
              rc, orion_display_ready(), orion_panel_name());
 
-    /* USB5V_EN (IO-expander 1, bit 3): driven HIGH by SIC's generic Tab5
-     * board bring-up above, meant for a future USB HOST mode. This phase
-     * has no USB personality at all yet, so leave it exactly as SIC set
-     * it -- revisit when Phase 6 (USB HID/flashrom/storage) adds a real
-     * USB role and needs to decide host vs. device VBUS behavior, same
-     * reasoning Tab5-Launchpad's main.c documents for its own (device-
-     * mode) case. */
+    /* USB5V_EN (IO-expander 1, bit 3): this deferred decision is now
+     * resolved -- see lib/SIC/src/boards/tab5/ioexpander.c's
+     * EXP1_BOOT_OUT_SET comment. USB-A runs as a TinyUSB device below
+     * (main/usb_device.c), not the host role USB5V_EN was meant for, and
+     * leaving it enabled backfeeds a connected host's own VBUS into this
+     * board's internal 5V rail with no protection (confirmed against the
+     * official schematic). SIC's board bring-up now leaves it low;
+     * nothing here needs to touch it. */
 
     /* Landscape-only for now (see Tab5Layout.h for the full reasoning):
      * GUI layout has one set of region constants, not rotation-aware the

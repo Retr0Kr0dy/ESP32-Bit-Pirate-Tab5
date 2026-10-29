@@ -117,6 +117,26 @@ bool CommandLineManager::handleEscapeSequence(
 bool CommandLineManager::handleEnter(char c, const std::string& inputLine) {
     if (c != '\r' && c != '\n') return false;
 
+    // A CDC client typically sends a line ending as a "\r\n" (or "\n\r")
+    // pair in one write. We only just consumed the first byte of that
+    // pair -- without handling this, its complementary byte is left
+    // sitting in the shared input queue, where the very next getLine()
+    // -style read (e.g. UserInputManager::readValidatedChoiceIndex()'s
+    // numbered-menu prompts, right after a command like "adapters" or
+    // "system" that immediately opens one) sees it as its own first
+    // character: an Enter with an empty buffer, so it silently defaults.
+    // Confirmed on real hardware (B/HARDWARE_TEST_TRACKER.md, T10's CLI
+    // menu note).
+    //
+    // This arms a pending-complement check on IInput itself (shared
+    // state, not a blind consume here): the next byte read on this same
+    // input is only discarded if it actually matches the opposite
+    // newline byte. A client with no pair at all, or any other byte
+    // already queued, is unaffected -- that byte is returned untouched
+    // to whichever read call sees it next, instead of ever being
+    // silently discarded.
+    terminalInput.expectLineEndingComplement(c);
+
     terminalView.println("");
     historyManager.add(inputLine);
     return true;

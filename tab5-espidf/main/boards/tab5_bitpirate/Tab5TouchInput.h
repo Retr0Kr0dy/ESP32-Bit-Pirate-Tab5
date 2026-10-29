@@ -28,8 +28,6 @@ public:
     Tab5TouchInput() = default;
     ~Tab5TouchInput() override = default;
 
-    char handler() override;
-    char readChar() override;
     void waitPress(uint32_t timeoutMs = 0) override;
 
     // Runs orion_kbd_init() (idempotent) and reports whether the real
@@ -37,6 +35,10 @@ public:
     // (BitPirateTask.cpp calls it first, before constructing this class)
     // -- this class owns only the input bridge, not GUI bring-up.
     bool begin();
+
+protected:
+    char handlerImpl() override;
+    char readCharImpl() override;
 
 private:
     bool kbdChecked_ = false;

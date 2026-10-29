@@ -8,6 +8,11 @@ void InfraredToyAdapter::run(const InfraredToyConfig& config, IInput& input, IHo
 
     begin();
 
+    // All 4 of this file's former yield() sites are now vTaskDelay(1):
+    // a bare yield() can never let the (lowest-priority) idle task run, so
+    // it never feeds that task's watchdog subscription -- confirmed on real
+    // hardware for this exact pattern in a sibling one-shot adapter
+    // (B/HARDWARE_TEST_TRACKER.md, T10).
     while (true) {
         pollUsb();
 
@@ -28,7 +33,7 @@ void InfraredToyAdapter::run(const InfraredToyConfig& config, IInput& input, IHo
             }
         }
 
-        yield();
+        vTaskDelay(1);
     }
 }
 
@@ -111,7 +116,7 @@ void InfraredToyAdapter::pollUsb() {
             handleHostBytes(buffer, read);
         }
 
-        yield();
+        vTaskDelay(1);
     }
 }
 
@@ -213,7 +218,7 @@ bool InfraredToyAdapter::writeExact(const uint8_t* data, size_t len, uint32_t ti
             return false;
         }
 
-        yield();
+        vTaskDelay(1);
     }
 
     hostSerial->flush();
@@ -350,7 +355,7 @@ void InfraredToyAdapter::finishTransmit(bool success) {
 
     if (success) {
         static constexpr uint8_t complete = 'C';
-        yield();
+        vTaskDelay(1);
         writeExact(&complete, 1, 100);
     }
 

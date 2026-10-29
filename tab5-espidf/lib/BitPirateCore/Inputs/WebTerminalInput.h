@@ -6,9 +6,11 @@ class WebTerminalInput : public IInput {
 public:
     WebTerminalInput(WebSocketServer& server);
 
-    char handler() override;
-    char readChar() override;
     void waitPress(uint32_t timeoutMs) override;
+
+protected:
+    char handlerImpl() override;
+    char readCharImpl() override;
 
 private:
     WebSocketServer& server;

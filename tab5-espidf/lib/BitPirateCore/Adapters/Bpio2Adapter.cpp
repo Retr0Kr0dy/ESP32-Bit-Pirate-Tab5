@@ -51,6 +51,15 @@ void Bpio2Adapter::run(const Bpio2AdapterConfig& adapterConfig,
             }
             encodedFrameBuffer()[encodedLength++] = byte;
         }
+
+        // No yield/delay point existed anywhere in this loop -- a pure
+        // busy-spin that never lets the (lowest-priority) idle task run,
+        // so it never feeds that task's watchdog subscription. The inner
+        // drain loop above runs with no delay at all, so active transfers
+        // are unaffected -- only the "nothing currently available" case
+        // waits here. Confirmed on real hardware for this exact shape in a
+        // sibling one-shot adapter (B/HARDWARE_TEST_TRACKER.md, T10).
+        vTaskDelay(1);
     }
 }
 

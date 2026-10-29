@@ -779,8 +779,17 @@ void DioController::handleHelp() {
 }
 
 bool DioController::isPinAllowed(uint8_t pin, const std::string& context) {
+    const auto& hardReservedPins = state.getHardReservedPins();
+
+    if (std::find(hardReservedPins.begin(), hardReservedPins.end(), pin) != hardReservedPins.end()) {
+        // No confirmation escape for this tier -- see HARD_RESERVED_PINS'
+        // own comment in main/CMakeLists.txt for why.
+        terminalView.println("DIO " + context + ": GPIO " + std::to_string(pin) + " is hard-reserved for the ESP32-C6 SDIO link on this board and cannot be used from DIO mode.");
+        return false;
+    }
+
     const auto& protectedPins = state.getProtectedPins();
-    
+
     if (std::find(protectedPins.begin(), protectedPins.end(), pin) != protectedPins.end()) {
         // Explicit, confirmed access to reserved pins (dangerous by design).
         terminalView.println("DIO " + context + ": GPIO " + std::to_string(pin) + " is normally reserved for internal use on this board.");

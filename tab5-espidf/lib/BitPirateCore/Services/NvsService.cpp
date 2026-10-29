@@ -1,7 +1,5 @@
 #include "NvsService.h"
 
-#include <cstdio>
-
 NvsService::~NvsService() {
     preferences.end(); // Close namespace
 }

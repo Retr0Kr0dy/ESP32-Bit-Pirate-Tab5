@@ -393,6 +393,13 @@ uint8_t OpenOcdBusPirateAdapter::readByte(IInput& input) {
         if (inputRequestedReset(input)) {
             ESP.restart();
         }
+        // No yield/delay point existed here at all -- a pure busy-spin that
+        // never lets the (lowest-priority) idle task run, so it never feeds
+        // that task's watchdog subscription. Shared by all 3 of this
+        // adapter's while(true) loops. Confirmed on real hardware for this
+        // exact shape in a sibling one-shot adapter
+        // (B/HARDWARE_TEST_TRACKER.md, T10).
+        vTaskDelay(1);
     }
 
     return static_cast<uint8_t>(hostSerial->read());

@@ -10,9 +10,11 @@ public:
     explicit SerialTerminalInput(IHostSerial& hostSerial)
         : hostSerial(hostSerial) {}
 
-    char handler() override;
     void waitPress(uint32_t timeoutMs) override;
-    char readChar() override;
+
+protected:
+    char handlerImpl() override;
+    char readCharImpl() override;
 
 private:
     IHostSerial& hostSerial;

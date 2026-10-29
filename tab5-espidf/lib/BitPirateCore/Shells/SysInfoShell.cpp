@@ -54,7 +54,9 @@ void SysInfoShell::cmdSummary() {
     terminalView.println("Model         : " + systemService.getChipModel());
     terminalView.println("Uptime        : " + std::to_string(systemService.getUptimeSeconds()) + " s");
     terminalView.println("Temperature   : " + systemService.getInternalTemperatureCStr() + " °C");
-    terminalView.println("Screen        : " + std::to_string((deviceView.getBrightness() * 100) / 255) + " % bright");
+    // getBrightness() is already 0-100 percent on this board -- see
+    // cmdScreen()'s own comment for why this isn't scaled from 0-255.
+    terminalView.println("Screen        : " + std::to_string(deviceView.getBrightness()) + " % bright");
     
     const int rr = systemService.getResetReason();
     terminalView.println(std::string("Reset reason  : ") + resetReasonToStr(rr) + " (" + std::to_string(rr) + ")");
@@ -157,10 +159,16 @@ void SysInfoShell::cmdMemory() {
 void SysInfoShell::cmdScreen() {
     terminalView.println("\n=== Device Screen ===");
 
-    uint8_t brightness = deviceView.getBrightness();
-
-    // Normalize to percent
-    uint8_t percent = static_cast<uint8_t>((brightness * 100) / 255);
+    // IDeviceView::setBrightness()/getBrightness() are already a direct
+    // 0-100 percent on this board (Tab5DeviceView passes the value
+    // straight through to orion_backlight_set(), which is itself a
+    // percent API, clamped to [1,100] -- see main/display.c). The old
+    // *100/255 and *255/100 conversions here assumed a 0-255 byte scale
+    // that doesn't match this board's only IDeviceView implementation:
+    // reading under-reported the real value (50% showed as "19%"), and
+    // writing overshot it (entering 50% actually set ~127%, clamped to
+    // 100%) -- confirmed live on real hardware.
+    uint8_t percent = deviceView.getBrightness();
     terminalView.println("Brightness : current " + std::to_string(percent) + " %");
 
     // Ask user new value
@@ -171,10 +179,7 @@ void SysInfoShell::cmdScreen() {
         100
     );
 
-    // Convert
-    uint8_t newBrightness = static_cast<uint8_t>((newPercent * 255) / 100);
-
-    deviceView.setBrightness(newBrightness);
+    deviceView.setBrightness(newPercent);
 
     terminalView.println("Brightness updated to " +
                          std::to_string(newPercent) + " %");

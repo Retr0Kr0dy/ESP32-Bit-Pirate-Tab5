@@ -1,4 +1,5 @@
 #include "UserInputManager.h"
+#include "States/GlobalState.h"
 
 std::string UserInputManager::getLine(bool onlyNumber /* = false */) {
     std::string result;
@@ -18,7 +19,25 @@ std::string UserInputManager::getLine(bool onlyNumber /* = false */) {
         }
 
         // Enter
-        if (c == '\r' || c == '\n') break;
+        if (c == '\r' || c == '\n') {
+            // A CDC client typically sends a line ending as a "\r\n" (or
+            // "\n\r") pair in one write. Without handling this, the pair's
+            // second byte is left sitting in the shared input queue, where
+            // the very next getLine() call (e.g. back-to-back prompts in a
+            // multi-step wizard like UsbAdapterShell's RX-GPIO-then-TX-GPIO
+            // sequence) sees it as its own first character: an Enter with
+            // an empty buffer, silently consuming that next prompt's real
+            // answer as a leftover instead. Confirmed on real hardware
+            // (B/HARDWARE_TEST_TRACKER.md, T10's CLI menu note). Same fix
+            // as CommandLineManager::handleEnter(), needed here too since
+            // this is a separate read loop over the same queue.
+            //
+            // Arms the shared pending-complement check on IInput itself;
+            // only an actual matching complement byte is ever discarded,
+            // on whichever read call sees it next -- see IInput.h.
+            terminalInput.expectLineEndingComplement(c);
+            break;
+        }
 
         // Backspace
         if ((c == '\b' || c == 127) && cursorIndex > 0) {
@@ -384,6 +403,10 @@ uint8_t UserInputManager::readModeNumber() {
         }
 
         if (c == '\r' || c == '\n') {
+            // Same leftover-CRLF-byte bug as getLine() above, over this
+            // same shared input -- see the comment there. This loop had
+            // no handling for it at all.
+            terminalInput.expectLineEndingComplement(c);
             terminalView.println("");
             break;
         }
@@ -421,8 +444,21 @@ uint8_t UserInputManager::readModeNumber() {
 }
 
 uint8_t UserInputManager::readValidatedPinNumber(const std::string& label, uint8_t def, uint8_t min, uint8_t max, const std::vector<uint8_t>& forbiddenPins) {
+    const auto& hardReservedPins = GlobalState::getInstance().getHardReservedPins();
+
     while (true) {
         int val = readValidatedUint8(label, def, min, max);
+
+        // Same hard-reserved tier DioController::isPinAllowed() enforces,
+        // checked here too since pin-assignment prompts like this one
+        // (I2C SDA/SCL, UART RX/TX, ...) are a second, independent path to
+        // the same GPIOs -- no "use it anyway?" escape for this tier; see
+        // HARD_RESERVED_PINS' own comment in main/CMakeLists.txt for why.
+        if (std::find(hardReservedPins.begin(), hardReservedPins.end(), val) != hardReservedPins.end()) {
+            terminalView.println("GPIO " + std::to_string(val) + " is hard-reserved for the ESP32-C6 SDIO link on this board -- choose another.");
+            continue;
+        }
+
         if (std::find(forbiddenPins.begin(), forbiddenPins.end(), val) != forbiddenPins.end()) {
             // Allow an informed override of a board-reserved GPIO.
             terminalView.println("GPIO " + std::to_string(val) + " is normally reserved for internal use on this board.");
@@ -437,7 +473,17 @@ uint8_t UserInputManager::readValidatedPinNumber(const std::string& label, uint8
 }
 
 uint8_t UserInputManager::readValidatedPinNumber(const std::string& label, uint8_t def, const std::vector<uint8_t>& forbiddenPins) {
-    return readValidatedPinNumber(label, def, 0, 48, forbiddenPins);
+    // Same per-board upper bound DioController::isPinAllowed() uses -- P4
+    // exposes GPIOs above the upstream S3-only limit of 48 (e.g. Grove A's
+    // 53/54), and most controllers assign their pins through this
+    // convenience overload, not the 4-arg one, so a hardcoded 48 here
+    // silently rejected those valid pins everywhere except DIO mode.
+    #ifdef DIO_MAX_PIN
+    const uint8_t maxAllowedPin = DIO_MAX_PIN;
+    #else
+    const uint8_t maxAllowedPin = 48; /* max pin for S3 */
+    #endif
+    return readValidatedPinNumber(label, def, 0, maxAllowedPin, forbiddenPins);
 }
 
 std::vector<uint8_t> UserInputManager::readValidatedPinGroup(
@@ -467,13 +513,26 @@ std::vector<uint8_t> UserInputManager::readValidatedPinGroup(
         std::stringstream ss(input);
         std::vector<uint8_t> pins;
         int val;
-        
+        const auto& hardReservedPins = GlobalState::getInstance().getHardReservedPins();
+        #ifdef DIO_MAX_PIN
+        const uint8_t maxAllowedPin = DIO_MAX_PIN;
+        #else
+        const uint8_t maxAllowedPin = 48; /* max pin for S3 */
+        #endif
+
         // Validate
         bool valid = true;
         while (ss >> val) {
             // Invalid
-            if (val < 0 || val > 48) {
+            if (val < 0 || val > maxAllowedPin) {
                 terminalView.println("Invalid GPIO: " + std::to_string(val));
+                valid = false;
+                break;
+            }
+            // Hard-reserved tier: no "use it anyway?" escape. Same
+            // chokepoint gap as readValidatedPinNumber() above.
+            if (std::find(hardReservedPins.begin(), hardReservedPins.end(), val) != hardReservedPins.end()) {
+                terminalView.println("GPIO " + std::to_string(val) + " is hard-reserved for the ESP32-C6 SDIO link on this board.");
                 valid = false;
                 break;
             }

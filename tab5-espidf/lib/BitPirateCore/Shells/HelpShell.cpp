@@ -297,6 +297,7 @@ void HelpShell::cmdUsb() {
     printHeader("USB");
     static const char* const lines[] = {
         "storage              - Mount SD as USB",
+        "sdusb on|off|status  - Explicit SD-as-USB opt-in",
         "keyboard [text]      - Start keyboard bridge",
         "mouse [action]       - Mouse move and click",
         "mouse jiggle [ms]    - Random mouse moves",

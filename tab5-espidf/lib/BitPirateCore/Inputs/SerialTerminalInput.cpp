@@ -1,7 +1,7 @@
 #include "SerialTerminalInput.h"
 #include <Arduino.h>
 
-char SerialTerminalInput::handler() {
+char SerialTerminalInput::handlerImpl() {
     while (!hostSerial.available()) {}
     return static_cast<char>(hostSerial.read());
 }
@@ -12,7 +12,7 @@ void SerialTerminalInput::waitPress(uint32_t timeoutMs) {
     hostSerial.read(); // discard
 }
 
-char SerialTerminalInput::readChar() {
+char SerialTerminalInput::readCharImpl() {
     if (hostSerial.available()) {
         return static_cast<char>(hostSerial.read());
     }

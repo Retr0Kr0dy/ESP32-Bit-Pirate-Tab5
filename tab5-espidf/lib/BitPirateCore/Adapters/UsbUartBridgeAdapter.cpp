@@ -186,7 +186,15 @@ void UsbUartBridgeAdapter::run(const UsbUartBridgeConfig& config, IInput& input,
 
         loopCounter++;
         if ((loopCounter & 0xFF) == 0) {
-            yield();
+            // A bare yield() only hands off to an equal-or-higher-priority
+            // ready task; it can never let the (lowest-priority) idle task
+            // run, so it never feeds that task's watchdog subscription.
+            // vTaskDelay() genuinely blocks this task, which does let idle
+            // run -- confirmed on real hardware (B/HARDWARE_TEST_TRACKER.md,
+            // T10): with the global esp_task_wdt_deinit() workaround
+            // removed, this exact yield() site let Task WDT trip
+            // indefinitely with this task still "currently running".
+            vTaskDelay(1);
         }
     }
 }

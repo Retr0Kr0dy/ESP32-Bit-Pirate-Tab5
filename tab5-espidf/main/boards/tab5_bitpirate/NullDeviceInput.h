@@ -9,7 +9,9 @@
 
 class NullDeviceInput : public IInput {
 public:
-    char handler() override { return KEY_NONE; }
-    char readChar() override { return KEY_NONE; }
     void waitPress(uint32_t /*timeoutMs*/ = 0) override {}
+
+protected:
+    char handlerImpl() override { return KEY_NONE; }
+    char readCharImpl() override { return KEY_NONE; }
 };

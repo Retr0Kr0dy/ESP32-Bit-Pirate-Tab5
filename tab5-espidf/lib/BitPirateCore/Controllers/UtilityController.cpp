@@ -253,7 +253,7 @@ void UtilityController::handleLogicAnalyzer(const TerminalCommand& cmd) {
         return;
     }
 */
-    if (state.isPinProtected(pin)) {
+    if (state.isPinProtected(pin) || state.isPinHardReserved(pin)) {
         terminalView.println("Logic Analyzer: This GPIO is protected or reserved.");
         return;
     }
@@ -345,7 +345,7 @@ void UtilityController::handleAnalogic(const TerminalCommand& cmd) {
 
     // Verify protected pin
     uint8_t pin = argTransformer.toUint8(cmd.getSubcommand());
-    if (state.isPinProtected(pin)) {
+    if (state.isPinProtected(pin) || state.isPinHardReserved(pin)) {
         terminalView.println("Analogic: This GPIO is protected or reserved.");
         return;
     }
@@ -451,7 +451,7 @@ void UtilityController::handleWizard(const TerminalCommand& cmd) {
 
     // Verify protected pin
     uint8_t pin = argTransformer.toUint8(cmd.getSubcommand());
-    if (state.isPinProtected(pin)) {
+    if (state.isPinProtected(pin) || state.isPinHardReserved(pin)) {
         terminalView.println("Wizard: This GPIO is protected or reserved.");
         return;
     }
@@ -500,7 +500,7 @@ void UtilityController::handleListen(const TerminalCommand& cmd) {
     }
 
     // Protected
-    if (state.isPinProtected(pin)) {
+    if (state.isPinProtected(pin) || state.isPinHardReserved(pin)) {
         terminalView.println("Listen: This GPIO is protected or reserved.");
         return;
     }

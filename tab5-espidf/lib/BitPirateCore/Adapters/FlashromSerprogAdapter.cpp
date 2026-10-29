@@ -94,7 +94,14 @@ void FlashromSerprogAdapter::run(const FlashromSerprogConfig& adapterConfig, IIn
             }
         }
 
-        yield();
+        // A bare yield() can never let the (lowest-priority) idle task run,
+        // so it never feeds that task's watchdog subscription -- confirmed
+        // on real hardware for this exact pattern in a sibling one-shot
+        // adapter (B/HARDWARE_TEST_TRACKER.md, T10). The inner
+        // hostSerial->available() drain loop above runs with no delay at
+        // all, so active transfers are unaffected -- only the idle/caught-up
+        // case waits here.
+        vTaskDelay(1);
     }
 }
 
@@ -459,7 +466,7 @@ bool FlashromSerprogAdapter::writeByte(uint8_t value) {
             return false;
         }
 
-        yield();
+        vTaskDelay(1);
     }
 
     if (hostSerial->write(value) != 1) {

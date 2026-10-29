@@ -34,6 +34,13 @@ void AvrDudeBusPirateAdapter::run(const AvrDudeBusPirateConfig& adapterConfig, I
 
         if (hostSerial->available() > 0) {
             handleByte(static_cast<uint8_t>(hostSerial->read()), input);
+        } else {
+            // No yield/delay point existed here at all -- a pure busy-spin
+            // that never lets the (lowest-priority) idle task run, so it
+            // never feeds that task's watchdog subscription. Confirmed on
+            // real hardware for this exact shape in a sibling one-shot
+            // adapter (B/HARDWARE_TEST_TRACKER.md, T10).
+            vTaskDelay(1);
         }
     }
 }
